@@ -312,9 +312,67 @@ static int ExecuteLuaScriptDebug(lua_State* L)
     return 1;
 }
 
-typedef int(__fastcall* LUAOPEN_PACKAGE)(lua_State* L);
 
+static int LuaPrint(lua_State* L)
+{
+    int nargs = lua_gettop(L);
+
+    for (int i = 1; i <= nargs; i++)
+    {
+        if (lua_isstring(L, i))
+        {
+            /* Pop the next arg using lua_tostring(L, i) and do your print */
+            std::cout << lua_tostring(L, i);
+        }
+        else
+        {
+            if (lua_isnumber(L, i))
+            {
+                std::cout << lua_tonumber(L, i);
+            }
+            if (lua_isboolean(L, i))
+            {
+                std::cout << lua_toboolean(L, i) ? "true" : "false";
+            }
+            if (lua_isfunction(L, i))
+            {
+                std::cout << "<lua function located at: " << std::hex << lua_topointer(L, i) << ">";
+            }
+            if (lua_isuserdata(L, i))
+            {
+                std::cout << "<lua userdata located at: " << std::hex << lua_touserdata(L, i) << ">";
+            }
+            if (lua_istable(L, i))
+            {
+                std::cout << "<lua table located at: " << std::hex << lua_topointer(L, i) << ">";
+            }
+            if (lua_iscfunction(L, i))
+            {
+                std::cout << "<lua native function located at: " << std::hex << lua_topointer(L, i) << ">";
+            }
+            if (lua_islightuserdata(L, i))
+            {
+                std::cout << "<lua lightuserdata located at: " << lua_topointer(L, i) << ">";
+            }
+            if (lua_isthread(L, i))
+            {
+                std::cout << "<lua thread located at: " << lua_topointer(L, i) << ">";
+            }
+            if (lua_isnoneornil(L, i))
+            {
+                std::cout << "nil";
+            }
+        }
+        std::cout << "  ";
+    }
+    std::cout << std::endl;
+    return 0;
+}
+
+typedef int(__fastcall* LUAOPEN_PACKAGE)(lua_State* L);
+typedef int(__fastcall* LUAL_ERROR)(lua_State* L, const char* fmt, ...);
 static LUAOPEN_PACKAGE g_fp_luaopen_package = nullptr;
+static LUAL_ERROR g_lual_error = nullptr;
 uint64_t __fastcall hf_luaopen_package(lua_State* L)
 {
     //MessageBoxA(nullptr, "Lua has been patched sire.", "*Finger crossed*", MB_OK);
@@ -329,10 +387,27 @@ uint64_t __fastcall hf_luaopen_package(lua_State* L)
     lua_register(L, "StartDebugger", StartDebugger);
     lua_register(L, "StopDebugger", StopDebugger);
     lua_register(L, "ExecuteLuaScriptDebug", ExecuteLuaScriptDebug);
+    lua_register(L, "print", LuaPrint);
     HWND currentWindow = GetActiveWindow();
     SetWindowText(currentWindow, L"Total Warhammer 2 Injected with SNED (Script Native Enchancer DLL)");
 
     return g_fp_luaopen_package(L);
+}
+
+int hf_luaL_error(lua_State* L, const char* fmt, ...)
+{
+    int out = NULL;
+    va_list args, argsForMe;
+    va_start(args, fmt);
+    va_copy(argsForMe, args);
+    vprintf(fmt, argsForMe);
+    if (g_lual_error)
+    {
+        out = g_lual_error(L, fmt, args);
+    }
+    va_end(argsForMe);
+    va_end(args);
+    return out;
 }
 
 uintptr_t FindDMAAddy(uintptr_t ptr, std::vector<unsigned int> offsets)
@@ -449,6 +524,291 @@ bool AttachParentConsole()
     return result;
 }
 
+typedef __int64(__fastcall* PRINT_ENGINE)(__int64 arg1, const char* format, ...);
+static PRINT_ENGINE g_print_engine_something_original = nullptr;
+
+__int64 EngineLogger(__int64 arg1, const char* format, ...)
+{
+    __int64 out = NULL;
+    va_list args, argsForMe;
+    va_start(args, format);
+    va_copy(argsForMe, args);
+    vprintf(format, argsForMe);
+    if (g_print_engine_something_original)
+    {
+        out =  g_print_engine_something_original(arg1, format, args);
+    }
+    va_end(argsForMe);
+    va_end(args);
+    return out;
+}
+
+static PRINT_ENGINE g_print_engine_something_2_original = nullptr;
+__int64 EngineLogger2(__int64 arg1, const char* format, ...)
+{
+    __int64 out = NULL;
+    va_list args;
+    va_start(args, format);
+    vprintf(format, args);
+    if (g_print_engine_something_2_original)
+    {
+        out = g_print_engine_something_2_original(arg1, format, args);
+    }
+    va_end(args);
+    return out;
+}
+
+
+typedef const char* (__fastcall* ERROR_MSG)(int code);
+static ERROR_MSG g_error_reason_msg = nullptr;
+
+const char* __fastcall ErrorReasonMsg(int code)
+{
+    const char* result;
+
+    switch (code)
+    {
+    case 0:
+        result = "This feature is not implemented";
+        break;
+    case 1:
+        result = "The operation was successful";
+        break;
+    case 2:
+        result = "The operation failed";
+        break;
+    case 3:
+        result = "The operation succeeded partially";
+        break;
+    case 4:
+        result = "Incompatible formats";
+        break;
+    case 5:
+        result = "The stream is already connected to another node";
+        break;
+    case 6:
+        result = "Trying to open a file when its name was not set";
+        break;
+    case 7:
+        result = "An unexpected value causes the file to be invalid";
+        break;
+    case 8:
+        result = "The file header is too large";
+        break;
+    case 9:
+        result = "The maximum was reached";
+        break;
+    case 10:
+        result = "Inputs are currently used";
+        break;
+    case 11:
+        result = "Outputs are currently used";
+        break;
+    case 12:
+        result = "The name is invalid";
+        break;
+    case 13:
+        result = "The name is already in use";
+        break;
+    case 14:
+        result = "The ID is invalid";
+        break;
+    case 15:
+        result = "The ID was not found";
+        break;
+    case 16:
+        result = "The InstanceID is invalid";
+        break;
+    case 17:
+        result = "No more data is available from the source";
+        break;
+    case 18:
+        result = "There is no child (source) associated with the node";
+        break;
+    case 19:
+        result = "The StateGroup already exists";
+        break;
+    case 20:
+        result = "The StateGroup is not a valid channel";
+        break;
+    case 21:
+        result = "The child already has a parent";
+        break;
+    case 22:
+        result = "The language is invalid (applies to the Low-Level I/O)";
+        break;
+    case 23:
+        result = "It is not possible to add itself as its own child";
+        break;
+    case 29:
+        result = "This user is not there";
+        break;
+    case 30:
+        result = "Not in use";
+        break;
+    case 31:
+        result = "Something is not within bounds";
+        break;
+    case 32:
+        result = "Something was not within bounds and was relocated to the nearest OK value";
+        break;
+    case 33:
+        result = "The sound has 3D parameters";
+        break;
+    case 34:
+        result = "The sound does not have 3D parameters";
+        break;
+    case 35:
+        result = "The item could not be added because it was already in the list";
+        break;
+    case 36:
+        result = "This path is not known";
+        break;
+    case 37:
+        result = "Stuff in vertices before trying to start it";
+        break;
+    case 38:
+        result = "Only a running path can be paused";
+        break;
+    case 39:
+        result = "Only a paused path can be resumed";
+        break;
+    case 40:
+        result = "This path is already there";
+        break;
+    case 41:
+        result = "This path is not there";
+        break;
+    case 42:
+        result = "Unknown in our voices list";
+        break;
+    case 43:
+        result = "The consumer needs more";
+        break;
+    case 44:
+        result = "The consumer does not need more";
+        break;
+    case 45:
+        result = "The provider has available data";
+        break;
+    case 46:
+        result = "The provider does not have available data";
+        break;
+    case 47:
+        result = "Not enough space to load bank";
+        break;
+    case 48:
+        result = "Bank error";
+        break;
+    case 49:
+        result = "No need to fetch new data";
+        break;
+    case 50:
+        result = "Memory leak";
+        break;
+    case 51:
+        result = "The memory manager's block list has been corrupted";
+        break;
+    case 52:
+        result = "Memory error";
+        break;
+    case 53:
+        result = "The requested action was cancelled (not an error)";
+        break;
+    case 54:
+        result = "Trying to load a bank using an ID which is not defined";
+        break;
+    case 55:
+        result = "Asynchronous pipeline component is processing";
+        break;
+    case 56:
+        result = "Error while reading a bank";
+        break;
+    case 57:
+        result = "Invalid switch type (used with the switch container)";
+        break;
+    case 58:
+        result = "Internal use only";
+        break;
+    case 59:
+        result = "This environment is not defined";
+        break;
+    case 60:
+        result = "This environment is used by an object";
+        break;
+    case 61:
+        result = "This object is not defined";
+        break;
+    case 62:
+        result = "Audio data already in target format, no conversion to perform";
+        break;
+    case 63:
+        result = "Source format not known yet";
+        break;
+    case 64:
+        result = "The bank version is not compatible with the current bank reader";
+        break;
+    case 65:
+        result = "The provider has some data but does not process it (virtual voices)";
+        break;
+    case 66:
+        result = "File not found";
+        break;
+    case 67:
+        result = "IO device not ready";
+        break;
+    case 68:
+        result = "The direct sound secondary buffer creation failed";
+        break;
+    case 69:
+        result = "The bank load failed because the bank is already loaded";
+        break;
+    case 71:
+        result = "The effect on the node is rendered";
+        break;
+    case 72:
+        result = "A routine needs to be executed on some CPU";
+        break;
+    case 73:
+        result = "The executed routine has finished its execution";
+        break;
+    case 74:
+        result = "The memory manager should have been initialized at this point";
+        break;
+    case 75:
+        result = "The stream manager should have been initialized at this point";
+        break;
+    case 76:
+        result = "The machine does not support SSE instructions (required on PC)";
+        break;
+    case 77:
+        result = "The system is busy and could not process the request";
+        break;
+    case 78:
+        result = "Channel configuration is not supported in the current execution context";
+        break;
+    case 79:
+        result = "Plugin media is not available for effect";
+        break;
+    case 80:
+        result = "Sound was Not Allowed to play";
+        break;
+    case 81:
+        result = "SDK command is too large to fit in the command queue";
+        break;
+    case 82:
+        result = "A play request was rejected due to the MIDI filter parameters";
+        break;
+    default:
+        result = "unknown";
+        break;
+    }
+
+    std::cout << result << std::endl;
+    return g_error_reason_msg(code);
+}
+
+
 BOOL APIENTRY DllMain( HMODULE hModule,
                        DWORD  ul_reason_for_call,
                        LPVOID lpReserved
@@ -503,14 +863,66 @@ BOOL APIENTRY DllMain( HMODULE hModule,
                 bAlternateMethod = true;
             }
         }
-        
-        if(MH_CreateHook(luaopen_packageAddress, &hf_luaopen_package, reinterpret_cast<void**>(&g_fp_luaopen_package)) != MH_OK)
+
+        if (MH_CreateHook(luaopen_packageAddress, &hf_luaopen_package, reinterpret_cast<void**>(&g_fp_luaopen_package)) != MH_OK)
         {
             std::cout << "Failed to create `luaopen_package` hook." << std::endl;
 
             return 0;
         }
+        
+        void* lual_errorAddress = (void*)GetProcAddress(Warhammer2ExeAddress, "luaL_error");
+        if (!lual_errorAddress)
+        {
+            std::cout << "Failed to find `lual_error`." << std::endl;
 
+            return 0;
+        }
+
+        if(MH_CreateHook(lual_errorAddress, &hf_luaL_error, reinterpret_cast<void**>(&g_lual_error)) != MH_OK)
+        {
+            std::cout << "Failed to create `lual_error` hook." << std::endl;
+
+            return 0;
+        }
+        ////hook engine output
+        //{
+        //    void* print_error_engine_original_Address = (void*)(GetModuleHandleA("Warhammer2.exe") + 0x388ee0);
+        //    if (print_error_engine_original_Address)
+        //    {
+        //        std::cout << "attempting to hook into game engine logger..." << std::endl;
+        //    }
+        //    if (MH_CreateHook(print_error_engine_original_Address, EngineLogger, reinterpret_cast<void**>(&g_print_engine_something_original)) != MH_OK)
+        //    {
+        //        std::cout << "Failed to create `print_engine_something` hook." << std::endl;
+        //    }
+        //}
+        ////hook engine output2
+        //{
+        //    void* print_error_engine_original_Address = (void*)(GetModuleHandleA("Warhammer2.exe") + 0x3884e0);
+        //    if (print_error_engine_original_Address)
+        //    {
+        //        std::cout << "attempting to hook into game engine logger 2..." << std::endl;
+        //    }
+        //    if (MH_CreateHook(print_error_engine_original_Address, EngineLogger2, reinterpret_cast<void**>(&g_print_engine_something_2_original)) != MH_OK)
+        //    {
+        //        std::cout << "Failed to create `print_engine_something_2` hook." << std::endl;
+        //    }
+        //}
+        ////hook error reason call
+        //{
+        //    void* error_reason = (void*)(GetModuleHandleA("Warhammer2.exe") + 0x2465c40);
+        //    if (error_reason)
+        //    {
+        //        std::cout << "attempting to hook into ErrorReasonMsg..." << std::endl;
+        //    }
+        //    if (MH_CreateHook(error_reason, ErrorReasonMsg, reinterpret_cast<void**>(&g_error_reason_msg)) != MH_OK)
+        //    {
+        //        std::cout << "Failed to create `ErrorReasonMsg` hook." << std::endl;
+        //    }
+        //}
+        
+        
         if (MH_EnableHook(MH_ALL_HOOKS) != MH_OK)
         {
             std::cout << "Failed to enable hooks." << std::endl;
@@ -532,4 +944,5 @@ BOOL APIENTRY DllMain( HMODULE hModule,
     }
     return TRUE;
 }
+
 
